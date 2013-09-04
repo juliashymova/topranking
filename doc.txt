@@ -1,0 +1,54 @@
+
+Install the 'topranking' module and enable it.
+
+1. Create a new User field to store the rating score. 
+Go to 'Instellingen -> Personen -> Accountinstellingen ->
+Velden beheren' and create a new field, for example:
+    - Label - Rating Score, 
+    - Systeemnaam - field_user_rating_score
+    - Veldtype - Integer
+    
+
+2. Create a new Rule Component. Go to 'Instellingen -> Workflow -> Rules ->
+Components -> Add new component'. 
+Component plugin: Rule, 
+Naam: Topranking, Variables: Data type - Gebruiker, Label - User, Systeemnaam - user
+
+Actions.
+Elements:
+    - Gives the ranking score to the user
+        Parameter: The user to get the ranking score: [user]
+        Provides variables: Rating Score (rating_score)
+    
+    - Set a data value
+        Parameter: Data: [user:field-user-rating-score], 
+        Value: [rating-score]
+        
+        
+See screencast topranking_1: 
+http://www.screencast.com/users/JuliaShymova/folders/Jing/media/b3b454c5-1998-441c-97a7-24ee37f3aa36
+    
+
+3. Create a View to display the users together with their Rating Score. 
+Go to 'Structuur -> Views -> Add new view'. 
+View name: topranking, Weergeven: Gebruikers, Display format: Tabel
+Add fields:
+    -  Bulk operations: Gebruiker (Gebruiker), 
+        Selected bulk operations: Topranking - 
+            the name of just added Rules Component (see step 2)
+    -  Gebruiker: Naam (Naam) 
+    -  Gebruiker: Rating Score (Rating Score) - 
+            the name of just added User field (see step 1)
+            
+Add sort criteria 'Gebruiker: Rating Score (desc)' if you want to sort the users according
+to their Rating Score.
+
+
+To edit the X-values go to the settings page 'Instellingen -> Topranking'.
+
+Open the page with just created view to see the list of users together with the rating score,
+choose an operation 'Topranking', select the users and click 'Execute'.
+
+See screencast topranking_2:
+http://www.screencast.com/users/JuliaShymova/folders/Jing/media/1f8f88cb-2db3-40a4-b5cb-a7f5cbd4e866  
+

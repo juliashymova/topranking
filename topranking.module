@@ -1,0 +1,189 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function topranking_menu() {
+  $items['admin/config/topranking'] = array(
+    'title' => t('Topranking'),
+    'description' => t('Adjust the x-values to count the user score (between 1 and 20).'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('topranking_set_x'),
+    'access callback' => 'user_access',
+    'access arguments' => array('topranking_set_x'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'topranking.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_rules_action_info().
+ */
+function topranking_rules_action_info() {
+  $actions = array();
+
+  $actions['topranking'] = array(
+    'label' => t('Gives the ranking score to the user'),
+    'group' => t('Easybranding'),
+    'parameter' => array(
+      'user' => array(
+        'type' => 'user',
+        'label' => t('The user to get the ranking score'),
+      ),
+    ),
+    'provides' => array(
+      'rating_score' => array(
+        'label' => t('Rating Score'),
+        'type' => 'integer',
+      ),
+    ),
+  );
+
+  return $actions;
+}
+
+function topranking ($user) {
+  $node_type = 'qu_design';
+  $n = array();
+
+  //N1 = Aantal designs toegevoegd waarbij node status = 1
+  $n['design_status_1'] = getDesignsWithStatus(1, $node_type, $user);
+
+  //N2 = Aantal designs toegevoegd waarbij node status = -5
+  $n['design_status_5'] = getDesignsWithStatus(-5, $node_type, $user);
+
+  //N3 = Aantal designs toegevoegd waarbij node status = 4
+  $n['design_status_4'] = getDesignsWithStatus(4, $node_type, $user);
+
+  //N4 = Aantal keer commentaar gegeven op een designs
+
+  //Get nids of all designs of the user
+  $query = db_select('node','n')
+  ->fields('n', array('nid'))
+  ->condition('n.uid', $user->uid, '=')
+  ->condition('n.type', $node_type, '=');
+  $result = $query
+  ->execute();
+
+  $nids = $result->fetchCol(0);
+
+  if(!(empty($nids))) {
+    $query = db_select('comment','c')
+    ->fields('c', array('cid'))
+    ->condition('c.nid', $nids);
+    $n['comments'] = $query->countQuery()->execute()->fetchField();
+  } else {
+    $n['comments'] = 0;
+  }
+
+  //N5 = Aantal keer ingelogd op de website
+
+  $n['login_count'] = user_stats_get_stats('login_count', $user->uid);
+
+  //N6 = Het aantal aanvragen ingediend (aanvraag = content type Access Request)
+  $query = db_select('node','n')
+  ->fields('n', array('uid'))
+  ->condition('n.uid', $user->uid, '=')
+  ->condition('n.type', 'access_request', '=');
+  $n['access_requests'] = $query->countQuery()->execute()->fetchField();
+
+  //N7 = Het aantal keer geselecteerd als favoriete designer
+  $query = db_select('field_data_field_qu_selected_designers', 'f')
+  ->fields('f', array('field_qu_selected_designers_target_id'))
+  ->condition('f.field_qu_selected_designers_target_id', $user->uid, '=');
+  $n['favourite_designer'] = $query->countQuery()->execute()->fetchField();
+
+  //N8 = Het aantal keer geselecteerd als winnaar
+
+  //Check if fase of wedstrijd is 6
+  $subquery = db_select('field_data_field_qu_fase', 'f');
+  $subquery->addField('f', 'entity_id', 'entity_id');
+  $subquery->condition('field_qu_fase_value', '6', '=');
+  $subquery->condition('entity_type', 'node', '=');
+
+  //Get nids of the winning designs
+  $query = db_select('field_data_field_qu_winning_design','d')
+    ->fields('d', array('field_qu_winning_design_target_id', 'entity_id'));
+
+  $query->join($subquery, 'f', 'd.entity_id = f.entity_id');
+
+  $result = $query->execute();
+
+  $nids = $result->fetchCol(0);
+
+  if(!(empty($nids))) {
+    //Get uids of the winning designers
+    $query = db_select('node','n')
+    ->fields('n', array('uid'))
+    ->condition('n.nid', $nids)
+    ->condition('n.uid', $user->uid, '=');
+
+    $n['winner'] = $query->countQuery()->execute()->fetchField();
+  } else {
+    $n['winner'] = 0;
+  }
+
+  //N9 = Aantal dagen dat gebruiker al lid is van de website
+
+  $today = time();
+  $created = $user->created;
+
+  $diff = $today - $created;
+  $n['days_membership'] = round($diff / 86400);
+
+  //N10 = Aantal sterren dat een ingezonden design krijgt
+  $sum = 0;
+
+  $query = db_select('field_data_field_qu_rating', 'f');
+  $query->join('node', 'n', 'f.entity_id = n.nid');
+  $query->fields('f', array('field_qu_rating_rating'))
+  ->condition('n.uid', $user->uid, '=');
+
+  $count = $query->countQuery()->execute()->fetchField();
+
+  $result = $query->execute();
+  foreach ($result as $record) {
+    $record->field_qu_rating_rating = $record->field_qu_rating_rating / 20;
+    $sum += $record->field_qu_rating_rating;
+  }
+
+  $n['average_stars'] = round($sum / $count);
+
+  //N11 = Aantal designs toegevoegd waarbij node status = 10
+
+  $n['design_status_10'] = getDesignsWithStatus(10, $node_type, $user);
+
+
+  //count the user score
+  $score = 0;
+
+  foreach($n as $criteria => $value) {
+   $score += $value * variable_get('x_' . $criteria);
+  }
+
+  return array('rating_score' => $score);
+}
+
+function getDesignsWithStatus($node_status, $node_type, $user) {
+  $query = db_select('node', 'n');
+  $query->join('field_data_field_qu_status', 'f', 'n.nid = f.entity_id');
+  $query->fields('n', array('nid'))
+  ->condition('n.uid', $user->uid, '=')
+  ->condition('n.type', $node_type, '=')
+  ->condition('f.field_qu_status_value', $node_status, '=');
+
+  $n = $query->countQuery()->execute()->fetchField();
+  return $n;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function topranking_permission() {
+  return array(
+    'topranking_set_x' => array(
+      'title' => t('Set x-values to count the user score'),
+    ),
+  );
+}

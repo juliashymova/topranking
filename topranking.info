@@ -1,0 +1,5 @@
+name = Topranking
+description = Gives the Ranking Score to the user.
+package = "Easybranding"
+core = 7.x
+dependencies[] = rules
